@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Median grade summarizer</title>
+    <style>
+
+/* By Frode Eika Sandnes, Oslo Metropolitan University, December, 2022.*/
+
+        body
+            {
+            color:lightgrey;
+            background-color:black;
+            font-family:sans-serif;
+            }
+
+    </style>
+    		<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/jszip.js"></script>
+            <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/xlsx.js"></script>
+            <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.1/xlsx.full.min.js"></script>  
+            
+            
+            <script>
+// Bootstrapping
+window.addEventListener('DOMContentLoaded', (event) => setup());
+function setup()
+    {
+    // Add file load handler
+    const fileSelector = document.getElementById("file-selector");
+	fileSelector.addEventListener('change', (event) => loadFile(event));        
+    }
+// retrieving file contents in excel format	as JSON object
+function loadFile(event)
+    {
+    const files = event.target.files;
+
+    for (var i = 0, f; f = files[i]; i++) 
+        {			
+        var reader = new FileReader();
+
+        let {name} = f;
+        name = name.substring(0, name.lastIndexOf("."));    // remove the extension
+        
+        reader.onload = (function(theFile) 
+            {
+            return function(e) 
+                {
+                var workbook = XLSX.read(e.target.result, {type: 'binary'});	
+                for (var sheetName of workbook.SheetNames)
+                    {
+                    var XL_row_object = XLSX.utils.sheet_to_row_object_array(workbook.Sheets[sheetName]);
+                    processSheet(XL_row_object, name);
+                    }						
+                };
+            })(f);		
+        reader.readAsBinaryString(f);
+        }
+    }
+
+function processSheet(XL_row_object, inputFilename)
+    {
+    // for consistency check - find max cells per row
+    const noCells = XL_row_object.map(row => [...Object.keys(row)].length);  
+    const maxCells = Math.max(...noCells);
+    // report if any have fewer as a mistake
+    const problemRows = [...Array(noCells.length).keys()].filter((e) => noCells[e] !== maxCells)
+    problemRows.forEach(e => 
+                report("Row "+(e+2)+" has only "+noCells[e]+" of "+maxCells+" rows: "+JSON.stringify(XL_row_object[e], null, 2)+".\n"));
+    if (problemRows.length > 0)
+        {
+        report("Aborted processing!");
+        return;  // Abourt processing    
+        }
+    report("Passing consistency check: All cells have contents\n");
+    // Check that all rows have the same number of grades, report deviations
+    const noGrades = XL_row_object.map(row => getSortedGradeList(row).length);
+    const maxGrades = Math.max(...noGrades);
+    // report if any rows have missing grades
+    const missingGrades = [...Array(noCells.length).keys()].filter((e) => noGrades[e] !== maxGrades)
+    missingGrades.forEach(e => 
+                report("Row "+(e+2)+" has only "+noGrades[e]+" of "+maxGrades+" grades: "+JSON.stringify(XL_row_object[e], null, )+".\n"));
+    if (missingGrades.length > 0)
+        {
+        report("Aborted processing!");
+        return;  // Abourt processing    
+        }
+    report("Passing consistency check: All rows have grades\n");
+
+    // traverse each row and add the new cell with the median and a last comments row
+    const newSheet = XL_row_object.map(row => ({ ...row, median:median(row), comment:warning(row)}));
+
+    // save the result to new sheet
+    var filename = inputFilename + '-median-output.xlsx';
+	var ws = XLSX.utils.json_to_sheet(newSheet);
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Median-output");
+    XLSX.writeFile(wb,filename);
+    report("New file \"" + filename + "\" with median grades based on "+maxGrades+" grades created for " + XL_row_object.length + " records with " + maxCells + " cells.");
+    }
+
+function report(str)
+    {
+    document.getElementById("report").innerText += str + "\n";
+    }
+
+const validGrades = ["A","B","C","D","E","F"];
+
+function getSortedGradeList(row)
+    {
+    let values = [...Object.values(row)]
+                        .map(cell => cell.toUpperCase().replace(/\s/g, "")); // sanitize
+    let gradeList = values.filter(value => validGrades.includes(value));   // ignore cells without grades
+    gradeList.sort();        // sort grades
+    return gradeList;
+    }
+
+function median(row)
+    {
+    const gradeList = getSortedGradeList(row);
+    return gradeList[Math.floor((gradeList.length -1) / 2)];     // return the middle element (median), when even number of elements, favour the highest (lowest index)
+    }
+
+// Add information about distance to the next grade up with warning if it is the next grade in the sequence.
+function warning(row)
+    {
+    const gradeList = getSortedGradeList(row);
+    const medianIndex = Math.floor((gradeList.length -1) / 2);
+    const median = gradeList[medianIndex];   
+    if (validGrades.indexOf(median) == 0)
+        {
+        return "";  // Top grade no comment    
+        }
+    const nextGradeUpIndex = gradeList.indexOf(median) - 1;  // find first indstance, and go back one.
+    const diffToNextGrade = medianIndex - nextGradeUpIndex;
+    if (diffToNextGrade == 1)
+        {
+        return "***Very close to next grade (distance " + diffToNextGrade + " grades)";    
+        }
+    return "Distance to next grade: " +diffToNextGrade + " grades.";
+    }
+
+    </script>
+</head>
+
+<body>
+    <h1>Median grade summarizer</h1>
+    <p>Upload a spreadsheet with partial grades. The tool with append a new column with the median grade for each row.</p>    
+	<form id="configuration">
+        <h2>Add files to link</h2>
+        <ul>
+            <li>
+                <label for="file-selector"><span>File 1</span></label>
+                <input type="file" id="file-selector" accept=".xlsx, .xls, .csv" >
+            </li>
+        </ul>				
+        <h2>Status report:</h2>                    
+    </form>		
+    <p id="report" style="color: yellow;"></p>
+</body>
+</html>
