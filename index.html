@@ -92,7 +92,7 @@ function processSheet(XL_row_object, inputFilename)
     const newSheet = XL_row_object.map(row => ({ ...row, median:median(row), comment:warning(row)}));
 
     // save the result to new sheet
-    var filename = inputFilename + '-median-output.xlsx';
+    var filename = inputFilename + '-median.xlsx';
 	var ws = XLSX.utils.json_to_sheet(newSheet);
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Median-output");
@@ -127,18 +127,28 @@ function warning(row)
     {
     const gradeList = getSortedGradeList(row);
     const medianIndex = Math.floor((gradeList.length -1) / 2);
-    const median = gradeList[medianIndex];   
-    if (validGrades.indexOf(median) == 0)
+    const median = gradeList[medianIndex];  
+    let ret = "";
+    if (validGrades.lastIndexOf(median) < validGrades.length) // already low
         {
-        return "";  // Top grade no comment    
-        }
-    const nextGradeUpIndex = gradeList.indexOf(median) - 1;  // find first indstance, and go back one.
-    const diffToNextGrade = medianIndex - nextGradeUpIndex;
-    if (diffToNextGrade == 1)
+        const nextGradeDownIndex = gradeList.lastIndexOf(median) + 1;  // find first indstance, and go back one.
+        if (gradeList[nextGradeDownIndex] != undefined)
+            {
+            const diffToNextGrade =  nextGradeDownIndex - medianIndex;
+            ret += gradeList[nextGradeDownIndex] + " <" + "-".repeat(diffToNextGrade);
+            }
+        }   
+    ret += " [" + median + "] ";   // add the grade 
+    if (!validGrades.indexOf(median) == 0) // if top grade - no comment
         {
-        return "***Very close to next grade (distance " + diffToNextGrade + " grades)";    
+        const nextGradeUpIndex = gradeList.indexOf(median) - 1;  // find first indstance, and go back one.
+        if (nextGradeUpIndex != -1)
+            {
+            const diffToNextGrade = medianIndex - nextGradeUpIndex;
+            ret += "-".repeat(diffToNextGrade) + "> " + gradeList[nextGradeUpIndex];
+            }
         }
-    return "Distance to next grade: " +diffToNextGrade + " grades.";
+    return ret;
     }
 
     </script>
@@ -148,10 +158,10 @@ function warning(row)
     <h1>Median grade summarizer</h1>
     <p>Upload a spreadsheet with partial grades. The tool with append a new column with the median grade for each row.</p>    
 	<form id="configuration">
-        <h2>Add files to link</h2>
+        <h2>Add file</h2>
         <ul>
             <li>
-                <label for="file-selector"><span>File 1</span></label>
+                <label for="file-selector"><span>File</span></label>
                 <input type="file" id="file-selector" accept=".xlsx, .xls, .csv" >
             </li>
         </ul>				
